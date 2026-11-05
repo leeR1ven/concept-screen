@@ -53,6 +53,8 @@ class Go2Body:
         self.jnt_lo = self.model.jnt_range[1:13, 0].copy()
         self.jnt_hi = self.model.jnt_range[1:13, 1].copy()
         self.forces = np.zeros(12, np.float32)
+        self.torque_mode = os.environ.get("ANA_TORQUE", "") in ("1", "true")
+        self.torque_max = float(os.environ.get("ANA_TORQUE_NM", "8"))
 
     # ------------------------------------------------------------ 控制
     def reset(self) -> None:
@@ -71,8 +73,18 @@ class Go2Body:
         f = self.forces
         if os.environ.get('ANA_BIDIR', '0') == '1':
             f = 2.0 * f - 1.0          # 双向：-1..1，能往回蹬
-        target = self.q_stand + self.posture_offset * f
-        tau = self.kp * (target - q) - self.kd * qd
+        # 两种驱动方式：
+        #   位置模式（默认）：大脑给"姿势偏移"，PD 把它变成扭矩；
+        #   力矩模式（ANA_TORQUE=1）：大脑**直接给扭矩**，不再经过 PD 位置环。
+        # 位置模式里"力度"其实是角度，这才是速度上不去的原因之一。
+        if self.torque_mode:
+            # 混合：PD 撑住身体（反馈），大脑叠加力矩（前馈推进）。
+            # 纯力矩从零学太难（实测 7 拍就倒），混合同真机做法。
+            tau = (self.kp * (self.q_stand - q) - self.kd * qd
+                   + (2.0 * f - 1.0) * self.torque_max)
+        else:
+            target = self.q_stand + self.posture_offset * f
+            tau = self.kp * (target - q) - self.kd * qd
         self.data.ctrl[:] = np.clip(tau, self.ctrl_lo, self.ctrl_hi)
 
     def step(self, forces=None) -> None:

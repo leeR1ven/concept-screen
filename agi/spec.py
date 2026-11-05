@@ -73,6 +73,8 @@ class Spec:
     # 让 3% 噪声下的码重合从 0.32 升到 0.92，同时异图分离反而更好（0.31→0.09）
     threshold_q: float = 0.70
     cpg_gain: float = 2.5                        # CPG → 运动区的权重
+    force_thr_lo: float = 0.50                      # 第 1 档阈值（占成员数比例）
+    force_thr_hi: float = 1.00                      # 最后一档阈值
     force_fan_in: int = 0                         # 力度细胞汇聚路数（0=全部≈42）
     cpg_inh: float = 1.4                         # CPG 全局抑制强度
     cpg_units: int = 0                             # 脊髓级步态振荡器单元数（0=关）

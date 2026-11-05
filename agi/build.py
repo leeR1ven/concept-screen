@@ -500,13 +500,22 @@ def build(spec: Spec | None = None, engine_cfg: EngineConfig | None = None,
             _sel = rng.choice(len(members), _fan, replace=False)
             members = members[np.sort(_sel)]
         K = len(members)
+        # 权重 = 1/K：驱动变成"成员里活跃的比例"(0~1)，与阈值同一量纲。
+        # 架构说门槛要按该神经元自己的信号来定——归一化后这个比例就是信号本身。
         eng.connect(np.repeat(f, K), np.tile(members, spec.n_force),
-                    np.ones(spec.n_force * K, np.float32), group=G.MOTOR_DRIVE)
+                    np.full(spec.n_force * K, 1.0 / float(K), np.float32),
+                    group=G.MOTOR_DRIVE)
         # 第 l 档：亮到"该肌肉成员数"的 (10% + 9%·l) 就点。
         # 阈值必须随成员数缩放——原来固定 1.5+0.65·l 是按 8 个成员设计的，
         # 实际每块肌肉约 42 个成员、近七成亮着，于是 10 档全过、力度恒等于 1。
-        thr = (float(K) * (0.10 + 0.09 * np.arange(spec.n_force,
-                                                   dtype=np.float32))).astype(np.float32)
+        # 温度计的量程要覆盖**实际驱动**。实测肌肉成员约 80% 亮着，
+        # 而旧阈值只到 0.91 倍成员数，导致 10 档几乎全过（力度恒 1）。
+        # 现在阈值铺满 0.5~1.0 倍成员数：0.8 的驱动落在中段 → 亮 6 档左右，形成分级。
+        # 阈值直接是"活跃比例"：第 0 档 0.30，最后一档 0.95（成员几乎全亮）
+        _lo = float(getattr(spec, "force_thr_lo", 0.30))
+        _hi = float(getattr(spec, "force_thr_hi", 0.95))
+        thr = (_lo + (_hi - _lo) * np.arange(spec.n_force, dtype=np.float32) / max(
+            1, spec.n_force - 1)).astype(np.float32)
         eng.set_thr(f, thr=thr, soft=np.full(spec.n_force, 0.6, np.float32))
         mforce[m] = f
     # 脊髓级 CPG（可选）：一个小的环状振荡回路，专门产生步态节律。

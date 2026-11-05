@@ -45,7 +45,10 @@ def walk(kw, ticks=400, stall=60, cap=6000):
         _drive_balance(eng, brain, float(st.get("roll", 0.0)), float(st.get("pitch", 0.0)),
                        int(kw.get("balance_sectors", 36)), int(kw.get("balance_per_sector", 20)))
         eng.step()
-        body.step(brain.forces())
+        # 用**连续**力度（力细胞的平均激活）而不是"亮了几档"。
+        # 计数式在多数细胞同时亮/灭时会退化成 0/1 开关，实测 std=0.000，
+        # 等于没有分级控制——这是"参数怎么变结果都一样"的根因。
+        body.step(brain.force_mean())
         if float(body.data.qpos[2]) <= 0.31:
             grounded += 1
         x = float(body.data.qpos[0])
@@ -86,10 +89,10 @@ def mutate(kw, rng, scale=1.0):
     out["balance_sectors"] = 36
     out["balance_per_sector"] = 20
     out["balance_gain"] = float(np.clip(kw.get("balance_gain", 0.5)
-                                        * (1 + 0.4 * scale * rng.uniform(-1, 1)), 0.05, 6.0))
+                                        * (1 + 0.6 * scale * rng.uniform(-1, 1)), 0.05, 20.0))
     for k in ("w_lo", "w_hi", "posture_offset", "cpg_gain", "cpg_inh"):
         v = float(kw.get(k, 0.5))
-        out[k] = float(np.clip(v * (1 + 0.25 * scale * rng.uniform(-1, 1)), 0.01, 12.0))
+        out[k] = float(np.clip(v * (1 + 0.35 * scale * rng.uniform(-1, 1)), 0.01, 30.0))
     return out
 
 
@@ -101,9 +104,9 @@ def random_kw(rng):
         w_lo=float(rng.uniform(0.01, 1.0)),
         w_hi=float(rng.uniform(0.3, 6.0)),
         motor_fan_in=int(rng.integers(4, 64)),
-        posture_offset=float(rng.uniform(0.12, 1.2)),
+        posture_offset=float(rng.uniform(0.12, 1.6)),
         cpg_units=int(rng.choice([4, 6, 8, 12, 16])),
-        cpg_gain=float(rng.uniform(0.5, 12.0)),
+        cpg_gain=float(rng.uniform(0.5, 20.0)),
         cpg_inh=float(rng.uniform(0.1, 2.0)),
         force_fan_in=int(rng.choice([0, 2, 4, 8, 16])),
         trot=True,
@@ -135,7 +138,12 @@ def main(argv=None) -> int:
     jobs = a.jobs or max(1, (os.cpu_count() or 4) - 2)
     rng = np.random.default_rng(2024)
 
-    seed = json.load(open(os.path.join(ROOT, "champion.json"), encoding="utf-8"))["kw"]
+    # 种子优先用"不摔最好"的存档：否则每次重启都从旧种子从头爬，历史成绩白丢
+    seed_path = os.path.join(ROOT, "walk_far_nofall.json")
+    if not os.path.exists(seed_path):
+        seed_path = os.path.join(ROOT, "champion.json")
+    seed = json.load(open(seed_path, encoding="utf-8"))["kw"]
+    print("种子来自:", os.path.basename(seed_path), flush=True)
     seed.update(balance_to_force=True, trot=True, balance_sectors=36, balance_per_sector=20,
                 balance_gain=float(seed.get("balance_gain", 0.5)))
     elites = []
@@ -159,10 +167,8 @@ def main(argv=None) -> int:
         # 存活太短（<300 拍）不计，避免"冲一下就倒"刷出假速度。
         # 不设任何门槛/及格线：只按速度排名取最好的。
         # 就算全场最快只有 0.02 m/s，也照选不误——排名永远存在，不需要"及格"。
-        # 速度 × 贴地时间占比：飞起来的那些时间不给分。
-        # 这是乘性权重，不是及格线——排名照样存在。
-        scored = [(kw,
-                   (r["dx"] / max(1, r["ticks"]) * 50.0) * (0.3 + 0.7 * r.get("ground", 1.0)),
+        # 唯一的评分：速度（米/秒）。摔倒的算无效，其余不加任何权重。
+        scored = [(kw, r["dx"] / max(1, r["ticks"]) * 50.0 if not r["fell"] else -1.0,
                    r["fell"])
                   for kw, r in outs]
 
@@ -184,6 +190,11 @@ def main(argv=None) -> int:
             record_nf = best_nf[1]
             with open(os.path.join(ROOT, "walk_far_nofall.json"), "w",
                       encoding="utf-8") as f:
+                json.dump({"dx": best_nf[1], "fell": False, "kw": best_nf[0]},
+                          f, ensure_ascii=False, indent=2)
+            # 版本化：破纪录就单独存一份，避免下次被覆盖后找不回来
+            v = os.path.join(ROOT, "walk_nf_%05.3f.json" % best_nf[1])
+            with open(v, "w", encoding="utf-8") as f:
                 json.dump({"dx": best_nf[1], "fell": False, "kw": best_nf[0]},
                           f, ensure_ascii=False, indent=2)
         ba = next(r for kw2, r in outs if kw2 is best_any[0])

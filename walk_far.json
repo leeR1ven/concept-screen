@@ -1,20 +1,20 @@
 {
   "kw": {
-    "seed": 501875,
-    "k_near": 26,
-    "region_links": 23,
-    "w_lo": 0.5591033244939739,
-    "w_hi": 0.35993101309358977,
-    "motor_fan_in": 30,
-    "posture_offset": 0.481527891133389,
-    "cpg_units": 16,
-    "cpg_gain": 3.889193640112193,
-    "cpg_inh": 0.21556707766281846,
-    "force_fan_in": 2,
+    "seed": 521420,
+    "k_near": 19,
+    "region_links": 4,
+    "w_lo": 0.32590600128821595,
+    "w_hi": 0.53930603968701,
+    "motor_fan_in": 27,
+    "posture_offset": 0.6268955635078642,
+    "cpg_units": 14,
+    "cpg_gain": 6.245644036169757,
+    "cpg_inh": 0.2790014012956574,
+    "force_fan_in": 5,
     "balance_to_force": true,
     "trot": true,
     "balance_sectors": 36,
     "balance_per_sector": 20,
-    "balance_gain": 0.3774119053340858
+    "balance_gain": 0.3835148921953982
   }
 }
