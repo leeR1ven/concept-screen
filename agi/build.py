@@ -514,8 +514,10 @@ def build(spec: Spec | None = None, engine_cfg: EngineConfig | None = None,
         # 阈值直接是"活跃比例"：第 0 档 0.30，最后一档 0.95（成员几乎全亮）
         _lo = float(getattr(spec, "force_thr_lo", 0.30))
         _hi = float(getattr(spec, "force_thr_hi", 0.95))
-        thr = (_lo + (_hi - _lo) * np.arange(spec.n_force, dtype=np.float32) / max(
-            1, spec.n_force - 1)).astype(np.float32)
+        # 温度计阶梯（比例）：权重已是 1/K，驱动=活跃成员比例 0~1
+        _lo, _hi = 0.30, 0.95
+        thr = (_lo + (_hi - _lo) * np.arange(spec.n_force, dtype=np.float32)
+               / max(1, spec.n_force - 1)).astype(np.float32)
         eng.set_thr(f, thr=thr, soft=np.full(spec.n_force, 0.6, np.float32))
         mforce[m] = f
     # 脊髓级 CPG（可选）：一个小的环状振荡回路，专门产生步态节律。
