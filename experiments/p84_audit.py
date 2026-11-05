@@ -19,7 +19,7 @@ CACHE8 = r"F:\一种AGI关联神经元架构\data\cache_win.npz"
 
 
 def run(G, cache, epochs=30, lr=0.05, decay=0.005, n_mid=768, n4=512,
-        chunk=2048, train_frac=0.7, seed=0):
+        chunk=2048, train_frac=0.7, seed=0, m_scale=1.0):
     rng = np.random.default_rng(seed)
     d = np.load(cache)
     F, A = d["frames"], d["actions"]
@@ -41,7 +41,8 @@ def run(G, cache, epochs=30, lr=0.05, decay=0.005, n_mid=768, n4=512,
     t3 = np.quantile(d3s, 0.7)
     L3s = (d3s - t3 > 0).astype(np.float32)
     d4s = L3s @ F4.T
-    m = int(np.round(Xs.sum(1).mean()))          # m 现算 = 第一层亮数
+    m = max(1, int(np.round(Xs.sum(1).mean() * m_scale)))   # m 现算（可放大）
+    m = min(m, n4 - 1)                                      # 边界：不能 >= n4
     print("阈值 t2=%.3f t3=%.3f  m=%d（现算）" % (t2, t3, m), flush=True)
 
     W = np.zeros((n4, len(KEYS)), np.float32)
